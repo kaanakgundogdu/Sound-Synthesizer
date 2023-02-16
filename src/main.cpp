@@ -1,6 +1,90 @@
 #include <iostream>
 #include "olcNoiseMaker.h"
 
+
+struct EnvelopeASDR
+{
+	double attack_time;
+	double decay_time;
+	double release_time;
+
+	double start_amplitude;
+	double sustain_amplitude;
+
+	double trigger_on_time;
+	double trigger_off_time;
+
+	bool is_note_on;
+
+	EnvelopeASDR() {
+		attack_time = 0.100;
+		decay_time = 0.01;
+		release_time = 0.200;
+
+		start_amplitude = 1.0;
+		sustain_amplitude = 0.8;
+
+		trigger_on_time = 0.0;
+		trigger_off_time = 0.0;
+
+		is_note_on = false;
+	}
+
+	double get_amplitude(double d_time) {
+		double amplitude = 0.0;
+		double life_time = d_time - trigger_on_time;
+
+		if (is_note_on) {
+
+			//Attack
+			if (life_time <= attack_time)
+			{
+				amplitude = (life_time / attack_time) * start_amplitude;
+			}
+			//decay
+			if (life_time > attack_time && life_time <= (attack_time + decay_time)) {
+				amplitude = ((life_time - attack_time) / decay_time) *
+					(sustain_amplitude - start_amplitude) + start_amplitude;
+			}
+			//sustain
+			if (life_time > (attack_time + decay_time)) {
+				amplitude = sustain_amplitude;
+			}
+
+		}
+
+		else {
+			amplitude = ((d_time - trigger_off_time) / release_time) * (0.0 - sustain_amplitude) + sustain_amplitude;
+		}
+
+		if (amplitude < 0.0001)
+			amplitude = 0;
+
+		return amplitude;
+	}
+
+	void note_on(double time_on) {
+		trigger_on_time = time_on;
+		is_note_on = true;
+	}
+
+	void note_off(double time_off) {
+		trigger_off_time = time_off;
+		is_note_on = false;
+	}
+
+};
+
+
+
+std::atomic<double> d_frequencyOutput = 0.0;
+double d_octaveBaseFrequency = 110.0;
+double d12thRootOf2 = pow(2.0, 1.0 / 12.0);
+EnvelopeASDR envelope;
+
+void print_keyboard(const std::vector<std::wstring>& devices);
+
+
 double w(double d_hertz) {
 	return d_hertz * 2.0 * PI;
 }
@@ -34,17 +118,20 @@ double oscillator(double d_hertz, double d_time, int sound_type) {
 	}
 }
 
-std::atomic<double> d_frequencyOutput = 0.0;
-double d_octaveBaseFrequency = 110.0; 	
-double d12thRootOf2 = pow(2.0, 1.0 / 12.0);		
 
-
-void print_keyboard(const std::vector<std::wstring>& devices);
 
 
 double MakeNoise(double d_time)
 {
-	double dOutput = oscillator(d_frequencyOutput, d_time, 4);
+	//double dOutput = envelope.get_amplitude(d_time) * oscillator(d_frequencyOutput, d_time, 3);
+
+	double dOutput = envelope.get_amplitude(d_time) *
+		(
+			+ oscillator(d_frequencyOutput * 0.5, d_time, 3)
+			+ oscillator(d_frequencyOutput * 1.0, d_time, 1)
+		);
+
+
 	return dOutput * 0.4; 
 }
 
@@ -73,6 +160,9 @@ int main()
 				if (current_key != k)
 				{
 					d_frequencyOutput = d_octaveBaseFrequency * pow(d12thRootOf2, k);
+
+					envelope.note_on(sound.GetTime());
+
 					std::wcout << "\rNote On : " << sound.GetTime() << "s " << d_frequencyOutput << "Hz";
 					current_key = k;
 				}
@@ -85,11 +175,11 @@ int main()
 		{
 			if (current_key != -1)
 			{
+				envelope.note_off(sound.GetTime());
+
 				std::wcout << "\rNote Off: " << sound.GetTime() << "s                        ";
 				current_key = -1;
 			}
-
-			d_frequencyOutput = 0.0;
 		}
 	}
 
