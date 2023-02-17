@@ -17,9 +17,9 @@ struct EnvelopeASDR
 	bool is_note_on;
 
 	EnvelopeASDR() {
-		attack_time = 0.100;
+		attack_time = 0.10;
 		decay_time = 0.01;
-		release_time = 0.200;
+		release_time = 0.20;
 
 		start_amplitude = 1.0;
 		sustain_amplitude = 0.8;
@@ -89,29 +89,33 @@ double w(double d_hertz) {
 	return d_hertz * 2.0 * PI;
 }
 
-double oscillator(double d_hertz, double d_time, int sound_type) {
+double oscillator(double d_hertz, double d_time, int sound_type=0, double lfo_hertz=0.0, double lfo_amplitude=0.0) {
+
+	double freq = w(d_hertz) * d_time + lfo_amplitude * d_hertz * sin(w (lfo_hertz) * d_time);
 
 	switch (sound_type)
 	{
-	case 0:
-		return sin(w(d_hertz) * d_time);
-	case 1:
-		return sin(w(d_hertz) * d_time) > 0.0 ? 1.0 : -1.0;
-	case 2:
-		return asin(sin(w(d_hertz) * d_time)) * (2.0 / PI);
+	case 0://sin
+		return sin(freq);
+	case 1://square
+		return sin(freq) > 0.0 ? 1.0 : -1.0;
+	case 2://triang
+		return asin(sin(freq)) * (2.0 / PI);
 
-	case 3: {
-		double xd = 0.0;
+	case 3: {//saw ana
+		double output_ = 0.0;
 		for (double i = 1.0; i < 100.0; i++)
 		{
-			xd += (sin(i * w(d_hertz) * d_time)) / i;
+			output_ += (sin(i * freq)) / i;
 		}
-		return xd * (2.0 / PI);
+		return output_ * (2.0 / PI);
 	}
 
-	
-	case 4:
+	case 4: //saw dig
 		return (2.0 / PI) * (d_hertz * PI * fmod(d_time, 1.0 / d_hertz) - (PI / 2.0));
+
+	case 5: //random noise
+		return 2.0 * ((double)rand() / (double)RAND_MAX) - 1.0;
 
 	default:
 		return 0.0;
@@ -121,18 +125,19 @@ double oscillator(double d_hertz, double d_time, int sound_type) {
 
 
 
-double MakeNoise(double d_time)
+double MakeNoise(double time_)
 {
-	//double dOutput = envelope.get_amplitude(d_time) * oscillator(d_frequencyOutput, d_time, 3);
 
-	double dOutput = envelope.get_amplitude(d_time) *
+	double output_ = envelope.get_amplitude(time_) *
 		(
-			+ oscillator(d_frequencyOutput * 0.5, d_time, 3)
-			+ oscillator(d_frequencyOutput * 1.0, d_time, 1)
+			+ 1.0 * oscillator(d_frequencyOutput, time_, 2 , 5.0,0.01)
+			+ 0.5 * oscillator(d_frequencyOutput * 1.5 , time_, 2 )
+			+ 0.25 * oscillator(d_frequencyOutput * 2.0 , time_, 2 )
+			+ 0.05 * oscillator(0, time_, 5)
 		);
 
 
-	return dOutput * 0.4; 
+	return output_ * 0.4;
 }
 
 int main()
